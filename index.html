@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎬 Savita Media Viewer</title>
+<meta name="theme-color" content="#0ea5e9">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="favicon.svg">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    max-width: 1000px; margin: 0 auto; padding: 20px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0; min-height: 100vh;
+  }
+  h1 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
+  .subtitle { text-align: center; color: #94a3b8; margin-bottom: 25px; font-size: 14px; }
+  .card {
+    background: #1e293b; border-radius: 12px; padding: 20px;
+    margin-bottom: 20px; border: 1px solid #334155;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  .card h2 { color: #7dd3fc; margin-top: 0; font-size: 18px; }
+  label { display: block; margin-bottom: 8px; color: #cbd5e1; font-size: 14px; }
+  input, select {
+    width: 100%; padding: 10px; margin-bottom: 12px;
+    border-radius: 8px; border: 1px solid #475569;
+    background: #0f172a; color: #e2e8f0; font-size: 14px;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 600px) { .row { grid-template-columns: 1fr; } }
+  button {
+    padding: 12px 24px; border-radius: 8px; border: none;
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: white; font-weight: bold; cursor: pointer;
+    font-size: 15px; transition: transform 0.2s, box-shadow 0.2s;
+  }
+  button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(14,165,233,0.4); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: #334155; }
+  button.danger { background: #b91c1c; }
+  .mode-badge {
+    display: inline-block; padding: 4px 10px; border-radius: 6px;
+    font-size: 12px; margin-right: 8px; font-weight: bold;
+  }
+  .mode-direct { background: #7c2d12; color: #fed7aa; }
+  .mode-worker { background: #14532d; color: #bbf7d0; }
+  .mode-backend { background: #1e3a8a; color: #bfdbfe; }
+  pre {
+    background: #0f172a; padding: 15px; border-radius: 8px;
+    overflow: auto; max-height: 500px; font-size: 13px;
+    border: 1px solid #334155; white-space: pre-wrap; word-break: break-all;
+  }
+  .status { padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; }
+  .status.info { background: #1e3a8a; border-right: 4px solid #3b82f6; }
+  .status.success { background: #14532d; border-right: 4px solid #22c55e; }
+  .status.error { background: #7f1d1d; border-right: 4px solid #ef4444; }
+  .status.loading { background: #78350f; border-right: 4px solid #f59e0b; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table td { padding: 6px 10px; border-bottom: 1px solid #334155; font-size: 13px; }
+  table td:first-child { color: #7dd3fc; font-weight: bold; width: 40%; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 16px; border-radius: 8px; cursor: pointer;
+    background: #334155; color: #cbd5e1; font-size: 13px;
+    border: 1px solid transparent; transition: all 0.2s;
+  }
+  .tab.active { background: #0ea5e9; color: white; border-color: #38bdf8; }
+  .history-item {
+    padding: 10px; border-radius: 8px; background: #0f172a;
+    margin-bottom: 8px; border: 1px solid #334155; font-size: 13px;
+  }
+  .history-item .meta { color: #64748b; font-size: 11px; margin-bottom: 4px; }
+  .history-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge-ok { color: #4ade80; }
+  .badge-err { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h1>🎬 Savita Media Viewer</h1>
+<p class="subtitle">أداة عرض معلومات المحتوى — تشفير AES+RSA في المتصفح</p>
+
+<div class="card">
+  <h2>⚙️ إعدادات الطلب</h2>
+
+  <div class="tabs">
+    <div class="tab active" data-mode="worker" onclick="setMode('worker', this)">
+      <span class="mode-badge mode-worker">موصى به</span> Cloudflare Worker
+    </div>
+    <div class="tab" data-mode="backend" onclick="setMode('backend', this)">
+      <span class="mode-badge mode-backend">Python</span> Backend
+    </div>
+    <div class="tab" data-mode="direct" onclick="setMode('direct', this)">
+      <span class="mode-badge mode-direct">تجريبي</span> مباشر
+    </div>
+  </div>
+
+  <div id="proxyConfig">
+    <label>🔗 رابط الوسيط:</label>
+    <input id="proxyUrl" placeholder="https://your-worker.workers.dev أو https://your-app.onrender.com">
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Content ID</label>
+      <input id="contentId" value="15158">
+    </div>
+    <div>
+      <label>Episode ID</label>
+      <input id="episodeId" value="86683">
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Definition</label>
+      <select id="definition">
+        <option value="GROOT_LD">GROOT_LD</option>
+        <option value="GROOT_SD">GROOT_SD</option>
+        <option value="GROOT_HD">GROOT_HD</option>
+        <option value="GROOT_FHD">GROOT_FHD</option>
+      </select>
+    </div>
+    <div>
+      <label>Language</label>
+      <select id="lang">
+        <option value="ar">العربية</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="fetchBtn" onclick="makeRequest()">🚀 جلب البيانات</button>
+</div>
+
+<div class="card">
+  <h2>📊 النتيجة</h2>
+  <div id="status" class="status info">جاهز للبدء...</div>
+  <div id="output">لم يتم إرسال أي طلب بعد.</div>
+  <div class="history-actions" id="resultActions" style="display:none">
+    <button class="secondary" onclick="copyResult()">📋 نسخ JSON</button>
+    <button class="secondary" onclick="downloadResult()">💾 تنزيل JSON</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>📚 السجل المحلي</h2>
+  <div id="historyList">لا يوجد سجل بعد.</div>
+  <div class="history-actions">
+    <button class="secondary" onclick="exportHistory()">📦 تصدير السجل</button>
+    <button class="danger" onclick="clearHistory()">🗑️ مسح السجل</button>
+  </div>
+</div>
+
+<script>
+// ============ الثوابت ============
+const PUBLIC_RSA_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCYo79ZFZHFCyboUBinm/I1OR7Obq2Do+4sMufINvD2Qw5fYvZeSYR24/lxRMsZnlbcP0a3/lG9dyX2G0ljvQwBSdCW9jTBBaOJiSW1M2DEFCP5/6ObJ7WCwDKxVVxebhzlzhGjjuPB86vsVVwYXTFtTZKfuTk3SQnpta/TOFE6cwIDAQAB";
+const API_BASE = "https://mobile-api.hitv.ltd/savita/media/previewInfo";
+const LS_KEY = "savita_history_v1";
+const LS_CFG = "savita_cfg_v1";
+
+let currentMode = "worker";
+let lastResult = null;
+
+// ============ إدارة الوضع ============
+function setMode(mode, el) {
+  currentMode = mode;
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  if (el) el.classList.add("active");
+  document.getElementById("proxyConfig").style.display = (mode === "direct") ? "none" : "block";
+  setStatus("info", `الوضع: ${mode === "worker" ? "Cloudflare Worker" : mode === "backend" ? "Python Backend" : "مباشر"}`);
+  saveConfig();
+}
+
+function setStatus(type, msg) {
+  const el = document.getElementById("status");
+  el.className = "status " + type;
+  el.textContent = msg;
+}
+
+// ============ التشفير ============
+function generateRawAesKey() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let key = "";
+  const arr = new Uint32Array(16);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < 16; i++) key += chars.charAt(arr[i] % chars.length);
+  return key;
+}
+
+function getRsaEncryptedAesKey(rawKey) {
+  const pem = `-----BEGIN PUBLIC KEY-----\n${PUBLIC_RSA_KEY}\n-----END PUBLIC KEY-----`;
+  const encryptor = new JSEncrypt();
+  encryptor.setPublicKey(pem);
+  return encryptor.encrypt(rawKey);
+}
+
+function buildDataToSign(params, currentTime) {
+  const sortedKeys = Object.keys(params).sort();
+  const valuesOnly = sortedKeys.map(k => String(params[k] || "")).join("");
+  return encodeURIComponent(valuesOnly + currentTime);
+}
+
+function generateSign(rawKey, dataString) {
+  const key = CryptoJS.enc.Utf8.parse(rawKey);
+  const encrypted = CryptoJS.AES.encrypt(dataString, key, {
+    mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7
+  });
+  const base64Data = encrypted.ciphertext.toString(CryptoJS.enc.Base64);
+  return CryptoJS.MD5(base64Data).toString().toLowerCase();
+}
+
+function decryptResponse(encryptedB64, rawKey) {
+  try {
+    const key = CryptoJS.enc.Utf8.parse(rawKey);
+    const decrypted = CryptoJS.AES.decrypt(
+      { ciphertext: CryptoJS.enc.Base64.parse(encryptedB64) },
+      key,
+      { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 }
+    );
+    return JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+  } catch (e) {
+    return { error: "فشل فك التشفير: " + e.message };
+  }
+}
+
+// ============ بناء الطلب ============
+function buildRequest() {
+  const params = {
+    category: "0",
+    contentId: document.getElementById("contentId").value,
+    episodeId: document.getElementById("episodeId").value,
+    definition: document.getElementById("definition").value,
+    projection: "false",
+    tryCode: "0"
+  };
+  const currentTime = String(Date.now());
+  const rawAesKey = generateRawAesKey();
+  const encryptedAesKey = getRsaEncryptedAesKey(rawAesKey);
+  const dataToSign = buildDataToSign(params, currentTime);
+  const sign = generateSign(rawAesKey, dataToSign);
+
+  return {
+    params, currentTime, rawAesKey,
+    headers: {
+      "clienttype": "android_hitv0426",
+      "versioncode": "133",
+      "deviceid": "14335dd76714083d",
+      "lang": document.getElementById("lang").value,
+      "currenttime": currentTime,
+      "aeskey": encryptedAesKey,
+      "sign": sign
+    }
+  };
+}
+
+// ============ تنفيذ الطلب ============
+async function makeRequest() {
+  const btn = document.getElementById("fetchBtn");
+  const output = document.getElementById("output");
+  btn.disabled = true;
+  output.textContent = "⏳ جاري التحضير...";
+  setStatus("loading", "⏳ جاري إرسال الطلب...");
+
+  try {
+    const { params, headers, rawAesKey } = buildRequest();
+    const queryString = new URLSearchParams(params).toString();
+    let response;
+
+    if (currentMode === "direct") {
+      response = await fetch(`${API_BASE}?${queryString}`, { headers });
+    } else if (currentMode === "worker") {
+      const proxy = document.getElementById("proxyUrl").value.trim();
+      if (!proxy) throw new Error("أدخل رابط Cloudflare Worker أولاً");
+      const fullUrl = `${API_BASE}?${queryString}`;
+      response = await fetch(`${proxy}?url=${encodeURIComponent(fullUrl)}`, { headers });
+    } else if (currentMode === "backend") {
+      const proxy = document.getElementById("proxyUrl").value.trim();
+      if (!proxy) throw new Error("أدخل رابط Backend أولاً");
+      response = await fetch(`${proxy.replace(/\/$/, "")}/api/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: `${API_BASE}?${queryString}`, headers })
+      });
+    }
+
+    if (!response.ok) {
+      const t = await response.text();
+      throw new Error(`HTTP ${response.status}: ${t.slice(0, 200)}`);
+    }
+
+    const json = await response.json();
+
+    if (json.code === "00000" && json.data) {
+      const decrypted = decryptResponse(json.data, rawAesKey);
+      lastResult = decrypted;
+      setStatus("success", "✅ تم جلب البيانات وفك تشفيرها بنجاح!");
+      renderResult(decrypted);
+      document.getElementById("resultActions").style.display = "flex";
+      addToHistory({ ok: true, contentId: params.contentId, episodeId: params.episodeId, data: decrypted });
+    } else {
+      setStatus("error", "❌ استجابة غير متوقعة");
+      output.innerHTML = `<pre>${escapeHtml(JSON.stringify(json, null, 2))}</pre>`;
+      addToHistory({ ok: false, contentId: params.contentId, episodeId: params.episodeId, error: json });
+    }
+  } catch (err) {
+    setStatus("error", "❌ فشل: " + err.message);
+    output.innerHTML = `<pre>خطأ: ${escapeHtml(err.message)}\n\n💡 تأكد من:\n- إعداد الوسيط (Worker/Backend)\n- عدم استخدام الوضع المباشر (CORS)</pre>`;
+    addToHistory({ ok: false, error: err.message });
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    saveConfig();
+  }
+}
+
+// ============ العرض ============
+function renderResult(data) {
+  const output = document.getElementById("output");
+  if (typeof data !== "object" || data === null) {
+    output.textContent = String(data);
+    return;
+  }
+  let html = "";
+  const flat = flattenObject(data);
+  if (Object.keys(flat).length > 0 && Object.keys(flat).length <= 40) {
+    html += "<table>";
+    for (const [k, v] of Object.entries(flat)) {
+      html += `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`;
+    }
+    html += "</table><br>";
+  }
+  html += `<details><summary>📄 JSON الكامل</summary><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`;
+  output.innerHTML = html;
+}
+
+function flattenObject(obj, prefix = "") {
+  const result = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      Object.assign(result, flattenObject(v, key));
+    } else if (v !== null && v !== "" && typeof v !== "object") {
+      result[key] = v;
+    }
+  }
+  return result;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ============ نسخ / تنزيل ============
+function copyResult() {
+  if (!lastResult) return;
+  navigator.clipboard.writeText(JSON.stringify(lastResult, null, 2))
+    .then(() => setStatus("success", "📋 تم نسخ JSON"))
+    .catch(e => setStatus("error", "فشل النسخ: " + e.message));
+}
+
+function downloadResult() {
+  if (!lastResult) return;
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `savita_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ============ السجل ============
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch { return []; }
+}
+function saveHistory(h) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(h.slice(0, 50))); } catch {}
+}
+function addToHistory(entry) {
+  const h = loadHistory();
+  h.unshift({ ...entry, ts: Date.now() });
+  saveHistory(h);
+  renderHistory();
+}
+function renderHistory() {
+  const list = loadHistory();
+  const el = document.getElementById("historyList");
+  if (!list.length) { el.textContent = "لا يوجد سجل بعد."; return; }
+  el.innerHTML = list.map((e, i) => `
+    <div class="history-item">
+      <div class="meta">${new Date(e.ts).toLocaleString("ar")} — ${e.ok ? '<span class="badge-ok">✅</span>' : '<span class="badge-err">❌</span>'}</div>
+      ${e.contentId ? `Content: ${escapeHtml(e.contentId)} | Episode: ${escapeHtml(e.episodeId || "")}` : ""}
+      ${e.error ? `<div style="color:#f87171">${escapeHtml(String(e.error).slice(0, 120))}</div>` : ""}
+    </div>
+  `).join("");
+}
+function exportHistory() {
+  const h = loadHistory();
+  const blob = new Blob([JSON.stringify(h, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `savita_history_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function clearHistory() {
+  if (!confirm("مسح كل السجل؟")) return;
+  localStorage.removeItem(LS_KEY);
+  renderHistory();
+}
+
+// ============ الإعدادات ============
+function saveConfig() {
+  try {
+    localStorage.setItem(LS_CFG, JSON.stringify({
+      mode: currentMode,
+      proxyUrl: document.getElementById("proxyUrl").value,
+      contentId: document.getElementById("contentId").value,
+      episodeId: document.getElementById("episodeId").value,
+      definition: document.getElementById("definition").value,
+      lang: document.getElementById("lang").value
+    }));
+  } catch {}
+}
+function loadConfig() {
+  try {
+    const c = JSON.parse(localStorage.getItem(LS_CFG) || "{}");
+    if (c.proxyUrl) document.getElementById("proxyUrl").value = c.proxyUrl;
+    if (c.contentId) document.getElementById("contentId").value = c.contentId;
+    if (c.episodeId) document.getElementById("episodeId").value = c.episodeId;
+    if (c.definition) document.getElementById("definition").value = c.definition;
+    if (c.lang) document.getElementById("lang").value = c.lang;
+    if (c.mode) {
+      const tab = document.querySelector(`.tab[data-mode="${c.mode}"]`);
+      if (tab) setMode(c.mode, tab);
+    }
+  } catch {}
+}
+
+// ============ PWA ============
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(e => console.warn("SW fail:", e));
+  });
+}
+
+// ============ التهيئة ============
+loadConfig();
+renderHistory();
+if (!document.querySelector(".tab.active")) {
+  setMode("worker", document.querySelector('.tab[data-mode="worker"]'));
+}
+</script>
+</body>
+</html>
