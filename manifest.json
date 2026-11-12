@@ -1,0 +1,20 @@
+{
+  "name": "Savita Media Viewer",
+  "short_name": "Savita",
+  "description": "عرض معلومات المحتوى من واجهة Savita",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0ea5e9",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
